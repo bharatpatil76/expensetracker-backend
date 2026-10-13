@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ExpenseTracker.Api/ExpenseTracker.Api.csproj" />
+    <Project Path="src/ExpenseTracker.Db/ExpenseTracker.Db.sqlproj" Type="42ea0dbd-9cf1-443e-919e-be9c484e4577" />
+  </Folder>
+</Solution>
