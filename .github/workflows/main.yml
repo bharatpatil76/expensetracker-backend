@@ -1,0 +1,93 @@
+name: Build and deploy ExpenseTracker (DB + API)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # lets the job request a GitHub OIDC token for azure/login
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+env:
+  AZURE_WEBAPP_NAME: app-expensetracker-bharat
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.x'
+
+      - name: Build database project (DACPAC)
+        run: dotnet build src/ExpenseTracker.Db -c Release
+
+      - name: Publish API
+        run: dotnet publish src/ExpenseTracker.Api -c Release -o ./api
+
+      - name: Upload DACPAC
+        uses: actions/upload-artifact@v4
+        with:
+          name: dacpac
+          path: src/ExpenseTracker.Db/bin/Release/ExpenseTracker.Db.dacpac
+
+      - name: Upload API
+        uses: actions/upload-artifact@v4
+        with:
+          name: api
+          path: ./api
+
+  deploy-database:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download DACPAC
+        uses: actions/download-artifact@v4
+        with:
+          name: dacpac
+          path: ./dacpac
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish DACPAC
+        uses: Azure/sql-action@v2
+        with:
+          connection-string: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
+          path: ./dacpac/ExpenseTracker.Db.dacpac
+          action: Publish
+          arguments: /p:BlockOnPossibleDataLoss=true
+
+  deploy-api:
+    needs: deploy-database
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download API
+        uses: actions/download-artifact@v4
+        with:
+          name: api
+          path: ./api
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: ./api
