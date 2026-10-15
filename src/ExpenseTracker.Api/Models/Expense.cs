@@ -11,4 +11,5 @@ public class Expense
     public DateTime CreatedAt { get; set; }
 
     public Category? Category { get; set; }   // navigation property (the FK)
+    public List<ExpenseAttachment> Attachments { get; set; } = [];
 }

@@ -1,4 +1,8 @@
+using Azure.Core;
+using Azure.Identity;
+using Azure.Storage.Blobs;
 using ExpenseTracker.Api.Data;
+using ExpenseTracker.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,6 +31,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.Authority = $"https://{builder.Configuration["Auth0:Domain"]}/";
         options.Audience = builder.Configuration["Auth0:Audience"];
     });
+
+//Blob Storage - no account key: developer login locally, Managed Identity in Azure
+TokenCredential credential = builder.Environment.IsDevelopment()
+    ? new DefaultAzureCredential(new DefaultAzureCredentialOptions
+    {
+        TenantId = builder.Configuration["Azure:TenantId"],
+        ExcludeManagedIdentityCredential = true
+    })
+    : new ManagedIdentityCredential(ManagedIdentityId.SystemAssigned);
+builder.Services.AddSingleton(new BlobServiceClient(
+    new Uri($"https://{builder.Configuration["Storage:AccountName"]}.blob.core.windows.net"), credential));
+builder.Services.AddSingleton<BlobFileStore>();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();

@@ -1,6 +1,8 @@
+using System.Linq.Expressions;
 using System.Security.Claims;
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Models;
+using ExpenseTracker.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,26 +12,28 @@ namespace ExpenseTracker.Api.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
-public class ExpensesController(AppDbContext db) : ControllerBase
+public class ExpensesController(AppDbContext db, BlobFileStore files) : ControllerBase
 {
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     private IQueryable<Expense> MyExpenses => db.Expenses.Where(e => e.UserId == UserId);
 
+    private static readonly Expression<Func<Expense, ExpenseResponse>> ToResponse = e => new ExpenseResponse(
+        e.Id, e.Title, e.Amount, e.SpentOn, e.CategoryId, e.Category!.Name,
+        e.Attachments.Any(a => a.Kind == AttachmentKind.Receipt),
+        e.Attachments.Any(a => a.Kind == AttachmentKind.VoiceNote));
+
     [HttpGet]                                     // GET /api/expenses
     public async Task<IActionResult> GetAll() =>
         Ok(await MyExpenses
             .OrderByDescending(e => e.SpentOn).ThenByDescending(e => e.Id)
-            .Select(e => new ExpenseResponse(e.Id, e.Title, e.Amount, e.SpentOn, e.CategoryId, e.Category!.Name))
+            .Select(ToResponse)
             .ToListAsync());
 
     [HttpGet("{id}")]                             // GET /api/expenses/5
     public async Task<IActionResult> GetById(int id)
     {
-        var expense = await MyExpenses
-            .Where(e => e.Id == id)
-            .Select(e => new ExpenseResponse(e.Id, e.Title, e.Amount, e.SpentOn, e.CategoryId, e.Category!.Name))
-            .FirstOrDefaultAsync();
+        var expense = await MyExpenses.Where(e => e.Id == id).Select(ToResponse).FirstOrDefaultAsync();
         return expense is null ? NotFound() : Ok(expense);
     }
 
@@ -81,11 +85,18 @@ public class ExpensesController(AppDbContext db) : ControllerBase
     [HttpDelete("{id}")]                          // DELETE /api/expenses/5
     public async Task<IActionResult> Delete(int id)
     {
-        var expense = await MyExpenses.FirstOrDefaultAsync(e => e.Id == id);
+        var expense = await MyExpenses.Include(e => e.Attachments).FirstOrDefaultAsync(e => e.Id == id);
         if (expense is null) return NotFound();
 
-        db.Expenses.Remove(expense);
+        var blobNames = expense.Attachments.Select(a => a.BlobName).ToList();
+
+        db.Expenses.Remove(expense);              // rows cascade-delete in SQL
         await db.SaveChangesAsync();
+
+        // Blob files are not covered by the SQL cascade - remove them too, or they become orphans
+        foreach (var name in blobNames)
+            await files.DeleteAsync(name);
+
         return NoContent();
     }
 }

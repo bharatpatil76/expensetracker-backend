@@ -16,6 +16,8 @@ public record ExpenseResponse(
     decimal Amount,
     DateOnly SpentOn,
     int CategoryId,
-    string CategoryName);
+    string CategoryName,
+    bool HasReceipt,
+    bool HasVoiceNote);
 
 public record CategoryTotal(string CategoryName, decimal Total);

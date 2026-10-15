@@ -7,6 +7,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Expense> Expenses => Set<Expense>();
+    public DbSet<ExpenseAttachment> ExpenseAttachments => Set<ExpenseAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -14,6 +15,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.Property(x => x.Amount).HasPrecision(10, 2);                  // DECIMAL(10,2)
             e.Property(x => x.CreatedAt).ValueGeneratedOnAdd();             // DB default SYSUTCDATETIME()
+        });
+
+        modelBuilder.Entity<ExpenseAttachment>(e =>
+        {
+            e.Property(x => x.UploadedAt).ValueGeneratedOnAdd();            // DB default SYSUTCDATETIME()
+            e.HasOne(x => x.Expense).WithMany(x => x.Attachments).HasForeignKey(x => x.ExpenseId);
         });
     }
 }
